@@ -1,3 +1,4 @@
+#include "log.h"
 #include "error.h"
 #include "scanner.h"
 
@@ -7,7 +8,7 @@ int main(int argc, char *argv[])
 {
     if (argc != 2)
     {
-        fprintf(stderr, "Usage: %s <program file>\n", argv[0]);
+        LOG_ERROR("Usage: %s <program file>", argv[0])
         return ERR_USAGE;
     }
 
@@ -17,39 +18,31 @@ int main(int argc, char *argv[])
 
     error = scanner_init(&scanner, argv[1]);
 
-    if (error != ERR_NONE) {
+    if (error != ERR_NONE)
+    {
         return error;
     }
 
     struct token_t token;
-    scan_token(&token, &scanner);
+    error = scan_token(&token, &scanner);
+
+    if (error != ERR_NONE)
+    {
+        return error;
+    }
+
     while (token.type != TK_EOF)
     {
-        switch (token.type)
+        error = scan_token(&token, &scanner);
+
+        if (error != ERR_NONE)
         {
-        case TK_ADD:
-            printf("ADD\n");
-            break;
-
-        case TK_SUBTRACT:
-            printf("SUBTRACT\n");
-            break;
-
-        case TK_MULTIPLY:
-            printf("MULTIPLY\n");
-            break;
-
-        case TK_DIVIDE:
-            printf("DIVIDE\n");
-            break;
-
-        case TK_INT_LITERAL:
-            printf("INT_LITERAL: %d\n", token.value);
-            break;
+            return error;
         }
-
-        scan_token(&token, &scanner);
     };
+
+    // Parsing
+    
 
     return 0;
 }

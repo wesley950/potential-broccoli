@@ -1,46 +1,65 @@
 #include "scanner.h"
 #include "error.h"
+#include "log.h"
 
 #include <stdlib.h>
 
 int32_t scanner_init(struct scanner_t *scanner, const char *program_path)
 {
+    // Try to open the file
     FILE *program_file = fopen(program_path, "r");
     if (program_file == NULL)
     {
-        fprintf(stderr, "File not found or could not be opened: %s\n", program_path);
+        LOG_ERROR("File not found or could not be opened: %s\n", program_path)
         return ERR_PROGRAM_NOT_FOUND;
     }
 
+    // Calculate the length of the buffer
     fseek(program_file, 0, SEEK_END);
     int64_t length = ftell(program_file) + 1;
     rewind(program_file);
 
+    // Try to allocate the buffer
     scanner->source = (char *)malloc(sizeof(char) * length);
     if (scanner->source == NULL)
     {
-        fprintf(stderr, "Could not allocate %ld bytes of memory!\n", length);
+        LOG_ERROR("Could not allocate %ld bytes of memory!\n", length)
         fclose(program_file);
         return ERR_CAN_NOT_ALLOCATE;
     }
 
+    // Read the contents of the file into the buffer
     fread(scanner->source, sizeof(char), length - 1, program_file);
     fclose(program_file);
 
+    // Reset the scanner state and put an EOF mark
+    // at the end of it
     scanner->source[length - 1] = EOF;
     scanner->position = 0;
+    scanner->line = 1;
+    scanner->column = 0;
     scanner->source_length = length;
+
+    // Try to allocate the token list
+    scanner->token_count = 0;
+    scanner->tokens = (struct token_t *)malloc(sizeof(struct token_t) * SCANNER_MAX_TOKENS);
 
     return 0;
 }
 
-void scan_token(struct token_t *token, struct scanner_t *scanner)
+int32_t scan_token(struct token_t *token, struct scanner_t *scanner)
 {
     char c = scanner_current_char(scanner);
-    
+
     // Skip the whitechars
     if (is_whitechar(c))
     {
+        if (c == '\n')
+        {
+            scanner->line++;
+            scanner->column = 0;
+        }
+
         while (is_whitechar(c))
         {
             c = scanner_next_char(scanner);
@@ -52,7 +71,7 @@ void scan_token(struct token_t *token, struct scanner_t *scanner)
     {
         token->type = TK_EOF;
         token->value = 0;
-        return;
+        return ERR_NONE;
     }
 
     // Then scan next token
@@ -64,6 +83,17 @@ void scan_token(struct token_t *token, struct scanner_t *scanner)
     {
         scan_operator(token, scanner);
     }
+    else
+    {
+        LOG_ERROR("Unexpected character '%c' on line %d, column %d.\n", c, scanner->line, scanner->column)
+        return ERR_UNEXPECTED_INPUT;
+    }
+
+    // Push the token to the end of the list
+    scanner->tokens[scanner->token_count] = *token;
+    scanner->token_count++;
+
+    return ERR_NONE;
 }
 
 void scan_integer_literal(struct token_t *token, struct scanner_t *scanner)
@@ -71,6 +101,8 @@ void scan_integer_literal(struct token_t *token, struct scanner_t *scanner)
     int32_t integer_literal = 0;
     char c = scanner_current_char(scanner);
 
+    // While the current char is a digit, convert it to an integer, multiply the
+    // current number by ten and then add to the converted number
     while (is_digit(c))
     {
         int digit = 0;
@@ -116,10 +148,6 @@ void scan_integer_literal(struct token_t *token, struct scanner_t *scanner)
         case (int)'9':
             digit = 9;
             break;
-
-        default:
-            // TODO: emit error
-            break;
         }
 
         integer_literal *= 10;
@@ -128,6 +156,7 @@ void scan_integer_literal(struct token_t *token, struct scanner_t *scanner)
         c = scanner_next_char(scanner);
     }
 
+    // Set the token fields
     token->type = TK_INT_LITERAL;
     token->value = integer_literal;
 }
@@ -153,6 +182,9 @@ void scan_operator(struct token_t *token, struct scanner_t *scanner)
         token->type = TK_DIVIDE;
         break;
     }
+
+    // Skip to the next char since currently operators
+    // only have one char
     scanner_next_char(scanner);
 }
 
@@ -168,6 +200,7 @@ int32_t scanner_current_char(struct scanner_t *scanner)
 int32_t scanner_next_char(struct scanner_t *scanner)
 {
     scanner->position++;
+    scanner->column++;
     return scanner_current_char(scanner);
 }
 
