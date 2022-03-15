@@ -1,6 +1,7 @@
 #include "log.h"
 #include "error.h"
 #include "scanner.h"
+#include "parser.h"
 
 #include <stdio.h>
 
@@ -42,7 +43,11 @@ int main(int argc, char *argv[])
     };
 
     // Parsing
-    
+    struct parser_t parser;
+    parser_init(&parser, &scanner);
+    parse_tokens(&parser);
+
+    LOG("Final Result: %d\n", parser_evaluate(parser.ast_root));
 
     return 0;
 }
